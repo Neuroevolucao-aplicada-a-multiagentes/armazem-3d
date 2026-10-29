@@ -6,6 +6,8 @@ signal coletou
 ## Emitido ao concluir a entrega. O gerenciador sorteia uma vaga nova.
 signal entregou
 
+const CaixaPapelao := preload("res://scripts/ia/caixa_papelao.gd")
+
 # Area util apos o realinhamento das fileiras: x ~6..34 (28u),
 # z ~-98..-24 (74u) -> diagonal ~79u.
 #
@@ -97,14 +99,9 @@ func _ready() -> void:
 
 func _criar_visual_carga() -> void:
 	# A caixa que o robo leva, visivel so entre a coleta e a entrega.
-	var malha := BoxMesh.new()
-	malha.size = Vector3(0.6, 0.42, 0.6)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.78, 0.6, 0.4)
-	mat.roughness = 0.9
 	_caixa = MeshInstance3D.new()
-	_caixa.mesh = malha
-	_caixa.material_override = mat
+	_caixa.mesh = CaixaPapelao.malha()
+	_caixa.material_override = CaixaPapelao.material()
 	_caixa.position = Vector3(0.0, 1.95, 0.0)
 	_caixa.visible = false
 	add_child(_caixa)

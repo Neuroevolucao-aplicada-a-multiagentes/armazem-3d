@@ -1,5 +1,6 @@
 extends Node3D
 
+const CaixaPapelao := preload("res://scripts/ia/caixa_papelao.gd")
 const COR_GLOW := Color(0.2, 0.8, 1.0)
 const COR_DOCA := Color(1.0, 0.8, 0.15)
 
@@ -79,6 +80,7 @@ var _agentes: Array[AgenteIA] = []
 # Se o robo passa SEGUNDOS_SEM_PROGRESSO sem se aproximar do alvo, a coleta e
 # trocada por uma vaga no corredor em que ele ja esta.
 const SEGUNDOS_SEM_PROGRESSO := 8.0
+var _sem_reatribuicao := "--sem-reatribuicao" in OS.get_cmdline_user_args()
 const GANHO_MINIMO := 1.0
 var _progresso: Dictionary = {}
 var reatribuicoes := 0
@@ -190,6 +192,7 @@ func _ready() -> void:
 		add_child(alvo)
 		corpo.configurar(alvo, entrega)
 		corpo.pausa_coleta = pausa
+		corpo.usar_desencalhe = not "--sem-desencalhe" in OS.get_cmdline_user_args()
 		corpo.mostrar_debug = (i == 0) and "--log-agentes" in OS.get_cmdline_user_args()
 
 		_visual_do_agente[corpo] = _criar_caixa_coleta()
@@ -214,16 +217,9 @@ func _criar_caixa_coleta() -> Marker3D:
 	var marker := Marker3D.new()
 	add_child(marker)
 
-	var malha := BoxMesh.new()
-	malha.size = Vector3(0.6, 0.46, 0.6)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.78, 0.6, 0.4)
-	mat.emission_enabled = true
-	mat.emission = COR_GLOW
-	mat.emission_energy_multiplier = 0.1
 	var caixa := MeshInstance3D.new()
-	caixa.mesh = malha
-	caixa.material_override = mat
+	caixa.mesh = CaixaPapelao.malha()
+	caixa.material_override = CaixaPapelao.material(COR_GLOW, 0.05)
 	marker.add_child(caixa)
 
 	# Disco azul no chao, embaixo da caixa: a sinalizacao de "e aqui".
@@ -298,6 +294,9 @@ var _hud_entregas: Label
 var _hud_ritmo: Label
 var _hud_tempo: Label
 var _tempo_decorrido := 0.0
+# Entregas ja feitas quando a contagem foi zerada pela tecla R. O painel mostra
+# so as de depois; o relatorio da medicao continua contando todas.
+var _entregas_zeradas := 0
 var _voos: Array = []
 const DURACAO_VOO := 0.45
 
@@ -333,7 +332,7 @@ func _criar_hud(n_robos: int) -> void:
 	_legenda(coluna, Color(0.45, 0.85, 1.0), "Caixa sobre disco azul: próxima coleta")
 	_legenda(coluna, Color(0.78, 0.6, 0.4), "Robô com caixa: levando para a doca")
 	_legenda(coluna, COR_DOCA, "Faixa amarela: doca de entrega")
-	_rotulo(coluna, "C câmera automática  ·  H oculta o painel  ·  F11 tela cheia", 12, Color(0.55, 0.6, 0.64))
+	_rotulo(coluna, "C câmera automática  ·  R zera a contagem\nH oculta o painel  ·  F11 tela cheia", 12, Color(0.55, 0.6, 0.64))
 
 
 func _rotulo(pai: Control, texto: String, tamanho: int, cor: Color) -> Label:
@@ -366,16 +365,29 @@ func _process(delta: float) -> void:
 	if _hud == null:
 		return
 	_tempo_decorrido += delta
-	var total := 0
-	for a in _agentes:
-		total += a.itens_entregues
+	var total := _total_entregas() - _entregas_zeradas
 	_hud_entregas.text = "%d %s" % [total, "entrega" if total == 1 else "entregas"]
 	var minutos := _tempo_decorrido / 60.0
 	_hud_ritmo.text = ("%.1f entregas por minuto" % (total / minutos)) if minutos > 0.25 else "medindo o ritmo..."
 	_hud_tempo.text = "%02d:%02d de operação" % [int(_tempo_decorrido) / 60, int(_tempo_decorrido) % 60]
 
 
+func _total_entregas() -> int:
+	var total := 0
+	for a in _agentes:
+		total += a.itens_entregues
+	return total
+
+
+## Recomeca do zero a contagem, o ritmo e o tempo do painel, sem mexer nos robos.
+func zerar_contagem() -> void:
+	_entregas_zeradas = _total_entregas()
+	_tempo_decorrido = 0.0
+
+
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_R:
+		zerar_contagem()
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_H:
 		if _hud != null:
 			_hud.visible = not _hud.visible
@@ -414,6 +426,9 @@ func _relatorio_e_sair() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# Com -- --sem-reatribuicao a camada fica desligada, para medir o efeito dela.
+	if _sem_reatribuicao:
+		return
 	for agente in _agentes:
 		if agente.alvo == null:
 			continue
@@ -465,7 +480,7 @@ var _pilha_nos: Array = []
 var _expedicoes: Array = []
 const DURACAO_EXPEDICAO := 1.6
 var _voos_entrega: Array = []
-var _malha_caixa: BoxMesh
+var _malha_caixa: ArrayMesh
 var _mat_papelao: StandardMaterial3D
 
 
@@ -479,11 +494,8 @@ func _posicao_na_pilha(i: int) -> Vector3:
 
 func _enviar_para_pilha(origem: Vector3) -> void:
 	if _malha_caixa == null:
-		_malha_caixa = BoxMesh.new()
-		_malha_caixa.size = Vector3(0.6, 0.46, 0.6)
-		_mat_papelao = StandardMaterial3D.new()
-		_mat_papelao.albedo_color = Color(0.78, 0.6, 0.4)
-		_mat_papelao.roughness = 0.9
+		_malha_caixa = CaixaPapelao.malha()
+		_mat_papelao = CaixaPapelao.material()
 	var capacidade := PILHA_COLUNAS * PILHA_FILEIRAS * PILHA_ANDARES
 	var fica := _pilha_ocupadas < capacidade
 	# Com a pilha cheia, a caixa pousa no topo e some: a pilha parece estavel.
