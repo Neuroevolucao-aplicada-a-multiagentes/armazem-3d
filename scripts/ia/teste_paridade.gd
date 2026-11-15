@@ -1,25 +1,14 @@
 extends Node3D
 
-## Teste de paridade entre a implementacao Python e a portada para GDScript.
+## Teste de paridade entre a implementacao Python e a de GDScript.
 ##
-## Le tests/golden_vectors.json, gerado no repositorio de treino por
-## src/gerar_golden_vectors.py, e verifica que esta implementacao reproduz os
-## mesmos numeros. E a protecao contra a classe de bug que ja apareceu tres
-## vezes neste projeto: a codificacao das entradas divergindo em silencio,
-## sem erro, com a rede simplesmente operando fora da distribuicao.
+## Le tests/golden_vectors.json, gerado por src/gerar_golden_vectors.py no
+## repositorio de treino, e confere:
+##   1. a saida da rede para as 16 entradas do fixture (exata);
+##   2. as entradas adimensionais 0, 1, 3, 4, 5 e 7 (exatas);
+##   3. as entradas 2, 6 e 8-15, que dependem da escala, por faixa.
 ##
-## Como usar: adicione este script a um Node3D numa cena vazia e execute-a.
-## O resultado sai no painel Saida.
-##
-## COBERTURA
-##   1. Forward pass, exato. Alimenta os 16 inputs do fixture e compara as 2
-##      saidas. Valida pesos, multiplicacao de matriz, tanh e saida linear.
-##   2. Entradas 0,1,3,4,5,7, exato. Sao adimensionais, entao independem da
-##      escala do mundo e podem ser comparadas diretamente com o fixture.
-##      Cobrem justamente onde os bugs historicos aconteceram: direcao
-##      unitaria (0,1) e tempo normalizado (7).
-##   3. Entradas 2,6,8-15, por invariante. Dependem da escala do mundo, entao
-##      sao checadas por faixa e por coerencia, nao por igualdade.
+## Uso: godot --headless --path . res://teste_paridade.tscn
 
 const CAMINHO_FIXTURE := "res://assets/golden_vectors.json"
 const CAMINHO_REDE := "res://assets/melhor_rede_fase5.json"
@@ -66,8 +55,7 @@ func _carregar_fixture() -> Dictionary:
 
 
 func _testar_arquitetura(fixture: Dictionary) -> void:
-	# O JSON entrega numeros como float, entao converte antes de comparar:
-	# [16.0, 32.0, 16.0, 2.0] != [16, 32, 16, 2] em GDScript.
+	# O JSON traz numeros como float: [16.0, 32.0] != [16, 32] em GDScript.
 	var esperada := []
 	for v in (fixture["arquitetura"] as Array):
 		esperada.append(int(v))
@@ -156,8 +144,7 @@ func _testar_entradas_adimensionais(fixture: Dictionary) -> void:
 				"caso %d: raio %d em [0,1]" % [i, r - 8])
 
 
-## Reproduz as entradas adimensionais com a MESMA formula de agente_ia.gd.
-## Mantenha as duas em sincronia: se a formula mudar la, muda aqui.
+## Reproduz as entradas adimensionais com a mesma formula de agente_ia.gd.
 func _montar_entradas_adimensionais(caso: Dictionary, fixture: Dictionary,
 									duracao: float) -> Array:
 	var pos: Array = caso["pos"]

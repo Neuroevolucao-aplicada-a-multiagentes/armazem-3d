@@ -4,13 +4,9 @@ const CaixaPapelao := preload("res://scripts/ia/caixa_papelao.gd")
 const COR_GLOW := Color(0.2, 0.8, 1.0)
 const COR_DOCA := Color(1.0, 0.8, 0.15)
 
-# Fileiras em x = 10.2 / 20.0 / 29.8 com colisor de 2.0u -> dois corredores
-# longitudinais livres de 7.8u, centrados em 15.1 e 24.9, cortados por dois
-# corredores transversais em z ~ -73 e ~ -48.
-#
-# ENTREGA e UNICA e fica na saida do armazem, depois do fim das fileiras.
-# Todos os agentes convergem para la, o que produz o encontro entre eles -
-# exatamente o cenario de coordenacao descentralizada que o trabalho defende.
+# Fileiras em x = 10.2 / 20.0 / 29.8: dois corredores longitudinais cortados
+# por dois transversais (z ~ -73 e ~ -48). A doca de entrega e unica, na saida
+# do armazem, e compartilhada por todos os agentes.
 const ENTREGA := Vector3(20.0, 0.5, -16.0)
 
 # Posicoes de nascimento dos agentes. A coleta inicial e sorteada entre as
@@ -34,14 +30,8 @@ const ROBOS_PADRAO := 8
 const PAUSA_COLETA_MS := 450
 
 # --- Vagas de coleta --------------------------------------------------------
-# Cada vaga tem dois pontos distintos, e a separacao entre eles e deliberada:
-#
-#   visual: na face da prateleira, onde a carga fica visivel.
-#   alvo:   no centro do corredor, que e o ponto que o agente persegue.
-#
-# Aproximar o alvo da prateleira reproduz o modo de falha medido no ambiente
-# 2D: com folga de 2.6 u as colisoes por minuto foram 366 e as entregas 79;
-# com 4.0 u, 210 e 107. O centro do corredor da 3.9 u de folga, que e o limite.
+# Cada vaga tem um ponto visual, na face da prateleira, e um alvo, no centro do
+# corredor, que e o ponto que o agente persegue.
 const FOLGA_VISUAL := 0.45   # afasta a caixa da estrutura da prateleira
 const ALTURA_VISUAL := 0.23  # metade da altura da caixa: ela fica apoiada no chao
 
@@ -51,9 +41,9 @@ const FACES: Array = [
 	[24.9, 21.0], [24.9, 28.8],
 ]
 
-# Posicoes em z dentro dos trechos de prateleira, concentradas perto das
-# extremidades e dos corredores transversais. O miolo do trecho longo do sul
-# fica de fora: e onde a politica reativa nao completa o ciclo.
+# Posicoes em z perto das extremidades e dos corredores transversais. O miolo
+# do trecho longo do sul fica de fora, porque ali a politica reativa nao
+# completa o ciclo.
 const ZS_VAGAS: Array = [
 	-25.5, -28.0, -38.0, -41.0,
 	-55.0, -58.0, -63.0, -66.0,
@@ -73,12 +63,9 @@ var _ocupadas: Dictionary = {}
 var _rng := RandomNumberGenerator.new()
 var _agentes: Array[AgenteIA] = []
 
-# --- Reatribuicao por falta de progresso ------------------------------------
-# Camada de distribuicao de tarefas, fora da rede, como num sistema de gestao
-# de armazem. Quando a vaga sorteada fica do outro lado de uma fileira, a
-# politica reativa pode ficar deslizando encostada nela sem nunca contornar.
+# --- Reatribuicao por falta de progresso (fora da rede) ---------------------
 # Se o robo passa SEGUNDOS_SEM_PROGRESSO sem se aproximar do alvo, a coleta e
-# trocada por uma vaga no corredor em que ele ja esta.
+# trocada por uma vaga no corredor em que ele esta.
 const SEGUNDOS_SEM_PROGRESSO := 8.0
 var _sem_reatribuicao := "--sem-reatribuicao" in OS.get_cmdline_user_args()
 const GANHO_MINIMO := 1.0
@@ -467,9 +454,7 @@ func _animar_voos(delta: float) -> void:
 
 
 # --- Pilha de expedicao ------------------------------------------------------
-# Ao lado da doca, encostada na parede norte (z -14.7). Fica fora do alcance
-# dos robos: para entregar eles precisam chegar a menos de 2.56 u do centro da
-# doca, em x 20, e a pilha comeca em x 24.6.
+# Ao lado da doca, encostada na parede norte e fora do alcance dos robos.
 const PILHA_ORIGEM := Vector3(24.6, 0.0, -15.1)
 const PILHA_COLUNAS := 3
 const PILHA_FILEIRAS := 2
@@ -552,9 +537,7 @@ func _criar_faixas() -> void:
 
 
 # --- Camera automatica ------------------------------------------------------
-# Passeio lento sobre a regiao onde ha atividade, mirando o centro do grupo de
-# robos, para a cena seguir em movimento enquanto alguem apresenta. Fica longe
-# das laterais, onde o teto em arco e baixo e as vigas entram no quadro.
+# Acompanha o centro do grupo de robos, longe das laterais, onde o teto e baixo.
 const PERIODO_PASSEIO := 70.0
 var _camera_auto := false
 var _fase_passeio := 0.0

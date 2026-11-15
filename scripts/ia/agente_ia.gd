@@ -8,12 +8,8 @@ signal entregou
 
 const CaixaPapelao := preload("res://scripts/ia/caixa_papelao.gd")
 
-# Area util apos o realinhamento das fileiras: x ~6..34 (28u),
-# z ~-98..-24 (74u) -> diagonal ~79u.
-#
-# As grandezas abaixo nao sao valores livres: sao as proporcoes fixadas em
-# docs/contrato_ambiente.md do repo de treino. A rede so opera dentro da
-# distribuicao em que foi treinada se a razao com a diagonal for preservada.
+# Area util: x ~6..34, z ~-98..-24, diagonal ~79 u. As grandezas abaixo mantem
+# as proporcoes do treino em relacao a diagonal (docs/contrato_ambiente.md).
 const DIAGONAL_MAPA := 79.0
 const ALCANCE_RAY := DIAGONAL_MAPA * 0.203        # 220 / 1081 no treino
 const VELOCIDADE_AGENTE := DIAGONAL_MAPA * 0.185  # 200 px/s / 1081
@@ -24,27 +20,18 @@ const NUM_RAYS := 8
 const DURACAO_CICLO := 45.0
 const CAMINHO_REDE := "res://assets/melhor_rede_fase5.json"
 
-# layer 1 = estaticos (prateleiras, chao), layer 2 = agentes.
-# Os agentes precisam colidir entre si E se enxergar nos raycasts: e disso
-# que depende a demonstracao de coordenacao descentralizada.
+# layer 1 = estaticos (prateleiras, chao), layer 2 = agentes. Os agentes
+# colidem entre si e aparecem nos raycasts uns dos outros.
 const MASCARA_PERCEPCAO := 1 | 2
 
-# Altura dos raycasts, em espaco local. Precisa coincidir com o centro da
-# capsula de colisao (Collider em y=1.275), e nao com a origem do no: esta
-# fica em y=-0.7 no mundo, abaixo das prateleiras, e os raios saiam por
-# baixo dos obstaculos sem detectar nada.
+# Altura dos raycasts: o centro da capsula de colisao, e nao a origem do no,
+# que fica abaixo das prateleiras.
 const ALTURA_SENSOR := 1.275
 
-# --- Camada reativa de desencalhe -------------------------------------------
-# NAO faz parte da rede neural. E uma camada de seguranca por fora dela,
-# analoga aos gerenciadores de trafego usados em frotas de AMR reais, e
-# precisa ser declarada como tal ao apresentar resultados.
-#
-# Existe porque a rede nao tem politica de recuperacao: no treino,
-# max_colisoes_morte eliminava o agente na quarta colisao, entao a evolucao
-# selecionou para EVITAR contato, nunca para SAIR dele. Encostado na parede,
-# a rede recebe entradas constantes, devolve a mesma saida e fica num ponto
-# fixo. Esta camada quebra esse ponto fixo.
+# --- Camada de recuperacao (fora da rede) -----------------------------------
+# A rede foi treinada para evitar contato, nao para sair dele: encostada numa
+# parede, recebe sempre as mesmas entradas e fica parada. Esta camada faz o
+# agente deslizar ao longo do obstaculo.
 const TEMPO_ATE_DESENCALHE := 0.5   # segundos em contato sem avancar
 const DURACAO_DESENCALHE := 0.6     # duracao do empurrao lateral
 const DESLOCAMENTO_MINIMO := 0.05   # por frame, para considerar que avancou
@@ -122,9 +109,8 @@ func configurar(pacote: Node3D, entrega: Node3D) -> void:
 	alvo = _alvo_pacote
 
 
-## Reposiciona o ponto que o agente persegue. Chamado pelo gerenciador a cada
-## entrega concluida. Nao altera o contrato de entrada: a rede so enxerga a
-## direcao unitaria e a distancia normalizada ate o alvo, nunca a posicao.
+## Reposiciona o ponto que o agente persegue. A rede so enxerga a direcao e a
+## distancia ate ele, nunca a posicao.
 func mover_alvo_pacote(pos: Vector3) -> void:
 	if _alvo_pacote != null:
 		_alvo_pacote.global_position = pos
@@ -134,24 +120,21 @@ func _physics_process(delta: float) -> void:
 
 	if not is_on_floor():
 		velocity.y -= 9.8 * delta
-		# sem movimento horizontal ate pousar — impede drift para dentro das prateleiras
+		# Sem movimento horizontal ate pousar.
 		velocity.x = 0.0
 		velocity.z = 0.0
 		move_and_slide()
 		return
 
-	# Zera a componente vertical ao pousar. Sem isto, velocity.y mantinha o
-	# valor acumulado durante a queda, o corpo alternava entre "no chao" e
-	# "no ar" a cada frame, e o ramo acima anulava velocity.x/z -- o agente
-	# rodava a rede normalmente mas ficava parado no lugar.
+	# Zera a velocidade vertical ao pousar; sem isso o corpo alternava entre chao
+	# e ar e o agente ficava parado.
 	velocity.y = 0.0
 
 	if rede.w1.is_empty() or alvo == null:
 		move_and_slide()
 		return
 
-	# Parado durante o carregamento. Sai antes da rede e da camada de
-	# desencalhe, para a parada nao ser tomada por travamento.
+	# Parado durante o carregamento, antes da rede e da camada de recuperacao.
 	if _tempo_pausa > 0.0:
 		_tempo_pausa -= delta
 		velocity.x = 0.0
@@ -167,9 +150,8 @@ func _physics_process(delta: float) -> void:
 	if vel2d.length() > 1.0:
 		vel2d = vel2d.normalized()
 
-	# A camada de desencalhe, quando ativa, sobrepoe a saida da rede por um
-	# instante. A rede continua sendo avaliada normalmente (inputs e output
-	# acima) para nao criar descontinuidade no ciclo nem no debug.
+	# Quando ativa, a camada de recuperacao substitui a saida da rede, que
+	# continua sendo avaliada.
 	if _tempo_desencalhe > 0.0:
 		_tempo_desencalhe -= delta
 		velocity.x = _dir_desencalhe.x * VELOCIDADE_AGENTE
@@ -244,8 +226,7 @@ func _direcao_de_escape() -> Vector2:
 		return Vector2.ZERO
 	normal = normal.normalized()
 
-	# Desliza ao longo da parede, escolhendo o sentido que aproxima do alvo,
-	# em vez de empurrar contra ela. E o comportamento de contorno classico.
+	# Desliza ao longo da parede, no sentido que aproxima do alvo.
 	var tangente := Vector2(-normal.y, normal.x)
 	if alvo != null:
 		var para_alvo := Vector2(
@@ -302,9 +283,7 @@ func _montar_inputs() -> Array:
 		dx_ent = ddx / (de + 1e-6)
 		dz_ent = ddz / (de + 1e-6)
 
-	# velocity guarda a velocidade em unidades de mundo (ate VELOCIDADE_AGENTE).
-	# No treino o input 6 e o modulo do vetor JA normalizado, sempre <= 1 --
-	# sem dividir pela velocidade, este input ficava saturado em 1.0 sempre.
+	# O input 6 e o modulo da velocidade normalizada, como no treino.
 	var vel_plano := Vector2(velocity.x, velocity.z)
 	var vel_mag := minf(vel_plano.length() / VELOCIDADE_AGENTE, 1.0)
 

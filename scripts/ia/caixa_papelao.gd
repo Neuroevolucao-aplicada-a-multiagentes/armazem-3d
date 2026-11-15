@@ -1,11 +1,7 @@
 extends RefCounted
 
-## Caixa de papelao com a mesma textura das caixas das prateleiras.
-##
-## A textura e a planificacao de uma caixa em cruz: tampa no centro e as quatro
-## laterais em volta. O BoxMesh do Godot distribui a imagem em outra grade, por
-## isso a malha e montada aqui, face a face, com as coordenadas da cruz medidas
-## na imagem de 1024 px. As proporcoes seguem as da planificacao.
+## Caixa de papelao com a mesma textura das caixas das prateleiras. A textura e
+## uma planificacao em cruz, entao a malha e montada face a face.
 
 const TAMANHO := Vector3(0.6, 0.46, 0.53)
 const TEXTURA := preload("res://models/shelving/warehouse_shelving_unit_0.jpg")
